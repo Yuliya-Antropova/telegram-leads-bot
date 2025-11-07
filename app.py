@@ -47,7 +47,7 @@ dp = Dispatcher()
 # ─────────── i18n texts ─────────
 TEXTS: Dict[str, Dict[str, str]] = {
     "ru": {
-        "choose_lang": "Выберите язык / Choose language 🌐",
+        "choose_lang": "🌐 Выберите язык / Choose language",
         "lang_ru": "Русский 🇷🇺",
         "lang_en": "English 🇬🇧",
         "hello": "👋 Здравствуйте! Давайте оставим заявку.\n\n1️⃣ Напишите ваше <b>имя</b>.",
@@ -67,7 +67,7 @@ TEXTS: Dict[str, Dict[str, str]] = {
         "lang_set_en": "Language set: English 🇬🇧",
     },
     "en": {
-        "choose_lang": "Выберите язык / Choose language 🌐",
+        "choose_lang": "🌐 Выберите язык / Choose language",
         "lang_ru": "Русский 🇷🇺",
         "lang_en": "English 🇬🇧",
         "hello": "👋 Hello! Let’s leave a request.\n\n1️⃣ Please type your <b>name</b>.",
@@ -142,14 +142,12 @@ async def send_to_recipients(text: str):
 async def cmd_start(m: Message, state: FSMContext):
     await state.clear()
     await state.set_state(Lead.lang)
-    await m.answer(t("ru", "choose_lang"))
-    await m.answer(t("en", "choose_lang"), reply_markup=lang_kb())
+    await m.answer("🌐 Выберите язык / Choose language", reply_markup=lang_kb())
 
 @dp.message(Command("lang"))
 async def cmd_lang(m: Message, state: FSMContext):
     await state.set_state(Lead.lang)
-    await m.answer(t("ru", "choose_lang"))
-    await m.answer(t("en", "choose_lang"), reply_markup=lang_kb())
+    await m.answer("🌐 Выберите язык / Choose language", reply_markup=lang_kb())
 
 @dp.callback_query(Lead.lang, F.data.in_({"lang_ru", "lang_en"}))
 async def set_lang(cb, state: FSMContext):
