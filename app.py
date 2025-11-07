@@ -14,6 +14,7 @@ from aiogram.types import (
     ReplyKeyboardRemove,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
+    CallbackQuery,
 )
 from aiogram.client.default import DefaultBotProperties
 from dotenv import load_dotenv
@@ -50,41 +51,52 @@ TEXTS: Dict[str, Dict[str, str]] = {
         "choose_lang": "🌐 Выберите язык / Choose language",
         "lang_ru": "Русский 🇷🇺",
         "lang_en": "English 🇬🇧",
-        "hello": "👋 Здравствуйте! Давайте оставим заявку.\n\n1️⃣ Напишите ваше <b>имя</b>.",
-        "ask_phone": "2️⃣ Оставьте <b>телефон</b>.\n\nМожно поделиться контактом кнопкой ниже 📱 или ввести вручную.",
+
+        # Шаги без нумерации
+        "step1": "👋 Привет! На связи помощник Nigma Interiors Design.\nДавайте оставим заявку на проект.\n\nКак вас зовут?",
+        "step2": "Где вам удобнее общаться?",
+        "method_tg": "✈️ Telegram",
+        "method_wa": "🟢 WhatsApp",
+        "method_call": "📞 Звонок",
+        "step3": "✍️ Напишите ваш номер телефона или нажмите кнопку ниже «Поделиться контактом».",
         "share_contact": "📱 Поделиться контактом",
         "type_phone": "⌨️ Ввести номер вручную",
         "phone_bad": "❌ Не похоже на номер. Введите в международном формате, например +79991234567.",
-        "ask_note": "3️⃣ Добавьте сообщение (по желанию) 💬.\nЕсли не нужно — отправьте «-».",
-        "lead_sent": "✅ Спасибо! Ваша заявка отправлена.\nМы свяжемся с вами в ближайшее время.",
+        "step4": "📝 Если хотите, напишите подробности. А если нет — отправьте любой символ.",
+        "step5": "🤝 Приятно познакомиться! Скоро мы свяжемся с вами указанным вами способом.",
+
         "lead_card_title": "<b>Новая заявка</b> 📝",
         "name": "Имя",
+        "method": "Способ связи",
         "phone": "Телефон",
         "message": "Сообщение",
         "from": "От",
         "start_again": "🔁 Начать заново: /start\n🌐 Сменить язык: /lang",
-        "lang_set_ru": "Язык установлен: Русский 🇷🇺",
-        "lang_set_en": "Language set: English 🇬🇧",
     },
     "en": {
         "choose_lang": "🌐 Выберите язык / Choose language",
         "lang_ru": "Русский 🇷🇺",
         "lang_en": "English 🇬🇧",
-        "hello": "👋 Hello! Let’s leave a request.\n\n1️⃣ Please type your <b>name</b>.",
-        "ask_phone": "2️⃣ Please share your <b>phone number</b>.\n\nYou can tap the button below 📱 or type it manually.",
-        "share_contact": "📱 Share phone",
+
+        "step1": "👋 Hi! This is the Nigma Interiors Design assistant.\nLet’s leave a project request.\n\nWhat’s your name?",
+        "step2": "Where is it more convenient to communicate?",
+        "method_tg": "✈️ Telegram",
+        "method_wa": "🟢 WhatsApp",
+        "method_call": "📞 Phone call",
+        "step3": "✍️ Type your phone number or tap the button below to share your contact.",
+        "share_contact": "📱 Share contact",
         "type_phone": "⌨️ Type phone manually",
         "phone_bad": "❌ This doesn’t look like a phone number. Use international format, e.g. +447911123456.",
-        "ask_note": "3️⃣ Add a message (optional) 💬.\nSend “-” to skip.",
-        "lead_sent": "✅ Thanks! Your request has been sent.\nWe will contact you shortly.",
+        "step4": "📝 If you wish, add details. If not — send any character.",
+        "step5": "🤝 Nice to meet you! We’ll contact you soon via the method you selected.",
+
         "lead_card_title": "<b>New Lead</b> 📝",
         "name": "Name",
+        "method": "Contact method",
         "phone": "Phone",
         "message": "Message",
         "from": "From",
         "start_again": "🔁 Start again: /start\n🌐 Change language: /lang",
-        "lang_set_ru": "Язык установлен: Русский 🇷🇺",
-        "lang_set_en": "Language set: English 🇬🇧",
     },
 }
 
@@ -95,6 +107,7 @@ def t(lang: str, key: str) -> str:
 class Lead(StatesGroup):
     lang = State()
     name = State()
+    method = State()
     phone = State()
     note = State()
 
@@ -105,7 +118,14 @@ def lang_kb() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text=TEXTS["en"]["lang_en"], callback_data="lang_en"),
     ]])
 
-def contact_kb(lang: str) -> ReplyKeyboardMarkup:
+def method_kb(lang: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=t(lang, "method_tg"), callback_data="method_tg"),
+        InlineKeyboardButton(text=t(lang, "method_wa"), callback_data="method_wa"),
+        InlineKeyboardButton(text=t(lang, "method_call"), callback_data="method_call"),
+    ]])
+
+def phone_kb(lang: str) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=t(lang, "share_contact"), request_contact=True)],
@@ -150,26 +170,58 @@ async def cmd_lang(m: Message, state: FSMContext):
     await m.answer("🌐 Выберите язык / Choose language", reply_markup=lang_kb())
 
 @dp.callback_query(Lead.lang, F.data.in_({"lang_ru", "lang_en"}))
-async def set_lang(cb, state: FSMContext):
+async def set_lang(cb: CallbackQuery, state: FSMContext):
     lang = "ru" if cb.data == "lang_ru" else "en"
     await state.update_data(lang=lang)
     await state.set_state(Lead.name)
-    await cb.message.answer(t(lang, "hello"))
-    await cb.answer(t(lang, "lang_set_ru") if lang == "ru" else t(lang, "lang_set_en"))
+    await cb.message.answer(t(lang, "step1"))
+    await cb.answer()
 
 @dp.message(Lead.lang)
 async def lang_fallback(m: Message, state: FSMContext):
     await state.update_data(lang="ru")
     await state.set_state(Lead.name)
-    await m.answer(t("ru", "hello"))
+    await m.answer(t("ru", "step1"))
 
 @dp.message(Lead.name, F.text)
 async def got_name(m: Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("lang", "ru")
     await state.update_data(name=m.text.strip())
+    await state.set_state(Lead.method)
+    await m.answer(t(lang, "step2"), reply_markup=None)
+    await m.answer(" ", reply_markup=method_kb(lang))
+
+@dp.callback_query(Lead.method, F.data.in_({"method_tg", "method_wa", "method_call"}))
+async def set_method_cb(cb: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    mapping = {
+        "method_tg": t(lang, "method_tg"),
+        "method_wa": t(lang, "method_wa"),
+        "method_call": t(lang, "method_call"),
+    }
+    await state.update_data(method=mapping[cb.data])
     await state.set_state(Lead.phone)
-    await m.answer(t(lang, "ask_phone"), reply_markup=contact_kb(lang))
+    await cb.message.answer(t(lang, "step3"), reply_markup=phone_kb(lang))
+    await cb.answer()
+
+@dp.message(Lead.method, F.text)
+async def set_method_text(m: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    text = m.text.lower()
+    if any(x in text for x in ["telegram", "телеграм", "tg"]):
+        method = t(lang, "method_tg")
+    elif any(x in text for x in ["whatsapp", "ватсап", "вотсап", "вацап"]):
+        method = t(lang, "method_wa")
+    elif any(x in text for x in ["звонок", "call", "phone call"]):
+        method = t(lang, "method_call")
+    else:
+        method = t(lang, "method_tg")  # дефолт
+    await state.update_data(method=method)
+    await state.set_state(Lead.phone)
+    await m.answer(t(lang, "step3"), reply_markup=phone_kb(lang))
 
 @dp.message(Lead.phone, F.contact)
 async def got_contact(m: Message, state: FSMContext):
@@ -181,7 +233,7 @@ async def got_contact(m: Message, state: FSMContext):
         return
     await state.update_data(phone=phone)
     await state.set_state(Lead.note)
-    await m.answer(t(lang, "ask_note"), reply_markup=ReplyKeyboardRemove())
+    await m.answer(t(lang, "step4"), reply_markup=ReplyKeyboardRemove())
 
 @dp.message(Lead.phone, F.text)
 async def got_phone_text(m: Message, state: FSMContext):
@@ -193,26 +245,25 @@ async def got_phone_text(m: Message, state: FSMContext):
         return
     await state.update_data(phone=phone)
     await state.set_state(Lead.note)
-    await m.answer(t(lang, "ask_note"), reply_markup=ReplyKeyboardRemove())
+    await m.answer(t(lang, "step4"), reply_markup=ReplyKeyboardRemove())
 
 @dp.message(Lead.note, F.text)
 async def finalize(m: Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("lang", "ru")
     note = m.text.strip()
-    if note in {"-", "—", "нет", "не нужно"}:
-        note = "-"
 
     lead_card = (
         f"{t(lang, 'lead_card_title')}\n\n"
         f"{t(lang, 'name')}: {data.get('name')}\n"
+        f"{t(lang, 'method')}: {data.get('method')}\n"
         f"{t(lang, 'phone')}: {data.get('phone')}\n"
-        f"{t(lang, 'message')}: {note or '-'}\n\n"
+        f"{t(lang, 'message')}: {note}\n\n"
         f"{t(lang, 'from')}: @{m.from_user.username or m.from_user.id}"
     )
 
     await send_to_recipients(lead_card)
-    await m.answer(t(lang, "lead_sent") + "\n\n" + t(lang, "start_again"))
+    await m.answer(t(lang, "step5") + "\n\n" + t(lang, "start_again"))
     await state.clear()
 
 @dp.message(F.text)
