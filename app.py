@@ -189,8 +189,8 @@ async def got_name(m: Message, state: FSMContext):
     lang = data.get("lang", "ru")
     await state.update_data(name=m.text.strip())
     await state.set_state(Lead.method)
-    await m.answer(t(lang, "step2"), reply_markup=None)
-    await m.answer(" ", reply_markup=method_kb(lang))
+    # ✅ одна отправка: текст + inline-кнопки способа связи
+    await m.answer(t(lang, "step2"), reply_markup=method_kb(lang))
 
 @dp.callback_query(Lead.method, F.data.in_({"method_tg", "method_wa", "method_call"}))
 async def set_method_cb(cb: CallbackQuery, state: FSMContext):
