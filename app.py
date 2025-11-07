@@ -22,8 +22,6 @@ from dotenv import load_dotenv
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-# Поддерживаем получателей: RECIPIENT_IDS="123,-1002222,456"
-# Оставлена совместимость с ADMIN_ID="123"
 def parse_ids(raw: str) -> List[int]:
     ids: List[int] = []
     for part in raw.split(","):
@@ -40,7 +38,7 @@ RECIPIENT_IDS: List[int] = parse_ids(recipients_raw) if recipients_raw else (par
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN is not set")
 if not RECIPIENT_IDS:
-    print("WARNING: No recipients configured. Set RECIPIENT_IDS or ADMIN_ID in Railway Variables.")
+    print("⚠️ WARNING: No recipients configured. Set RECIPIENT_IDS or ADMIN_ID in Railway Variables.")
 
 # ───────── aiogram base ─────────
 bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -49,42 +47,42 @@ dp = Dispatcher()
 # ─────────── i18n texts ─────────
 TEXTS: Dict[str, Dict[str, str]] = {
     "ru": {
-        "choose_lang": "Выберите язык / Choose language",
-        "lang_ru": "Русский",
-        "lang_en": "English",
-        "hello": "Здравствуйте! Давайте оставим заявку.\n\n1) Напишите ваше <b>имя</b>.",
-        "ask_phone": "2) Оставьте <b>телефон</b>.\n\nМожно поделиться контактом кнопкой ниже или ввести вручную.",
-        "share_contact": "Поделиться контактом",
-        "type_phone": "Ввести номер вручную",
-        "phone_bad": "Не похоже на номер. Введите в международном формате, например +79991234567.",
-        "ask_note": "3) Добавьте сообщение (по желанию). Если не нужно — отправьте «-».",
-        "lead_sent": "Спасибо! Ваша заявка отправлена. Мы свяжемся с вами в ближайшее время.",
+        "choose_lang": "Выберите язык / Choose language 🌐",
+        "lang_ru": "Русский 🇷🇺",
+        "lang_en": "English 🇬🇧",
+        "hello": "👋 Здравствуйте! Давайте оставим заявку.\n\n1️⃣ Напишите ваше <b>имя</b>.",
+        "ask_phone": "2️⃣ Оставьте <b>телефон</b>.\n\nМожно поделиться контактом кнопкой ниже 📱 или ввести вручную.",
+        "share_contact": "📱 Поделиться контактом",
+        "type_phone": "⌨️ Ввести номер вручную",
+        "phone_bad": "❌ Не похоже на номер. Введите в международном формате, например +79991234567.",
+        "ask_note": "3️⃣ Добавьте сообщение (по желанию) 💬.\nЕсли не нужно — отправьте «-».",
+        "lead_sent": "✅ Спасибо! Ваша заявка отправлена.\nМы свяжемся с вами в ближайшее время.",
         "lead_card_title": "<b>Новая заявка</b> 📝",
         "name": "Имя",
         "phone": "Телефон",
         "message": "Сообщение",
         "from": "От",
-        "start_again": "Начать заново: /start\nСменить язык: /lang",
+        "start_again": "🔁 Начать заново: /start\n🌐 Сменить язык: /lang",
         "lang_set_ru": "Язык установлен: Русский 🇷🇺",
         "lang_set_en": "Language set: English 🇬🇧",
     },
     "en": {
-        "choose_lang": "Выберите язык / Choose language",
-        "lang_ru": "Русский",
-        "lang_en": "English",
-        "hello": "Hello! Let’s leave a request.\n\n1) Please type your <b>name</b>.",
-        "ask_phone": "2) Please share your <b>phone</b>.\n\nYou can tap the button below or type it manually.",
-        "share_contact": "Share phone",
-        "type_phone": "Type phone manually",
-        "phone_bad": "This doesn’t look like a phone number. Use international format, e.g. +447911123456.",
-        "ask_note": "3) Add a message (optional). Send “-” to skip.",
-        "lead_sent": "Thanks! Your request has been sent. We will contact you shortly.",
+        "choose_lang": "Выберите язык / Choose language 🌐",
+        "lang_ru": "Русский 🇷🇺",
+        "lang_en": "English 🇬🇧",
+        "hello": "👋 Hello! Let’s leave a request.\n\n1️⃣ Please type your <b>name</b>.",
+        "ask_phone": "2️⃣ Please share your <b>phone number</b>.\n\nYou can tap the button below 📱 or type it manually.",
+        "share_contact": "📱 Share phone",
+        "type_phone": "⌨️ Type phone manually",
+        "phone_bad": "❌ This doesn’t look like a phone number. Use international format, e.g. +447911123456.",
+        "ask_note": "3️⃣ Add a message (optional) 💬.\nSend “-” to skip.",
+        "lead_sent": "✅ Thanks! Your request has been sent.\nWe will contact you shortly.",
         "lead_card_title": "<b>New Lead</b> 📝",
         "name": "Name",
         "phone": "Phone",
         "message": "Message",
         "from": "From",
-        "start_again": "Start again: /start\nChange language: /lang",
+        "start_again": "🔁 Start again: /start\n🌐 Change language: /lang",
         "lang_set_ru": "Язык установлен: Русский 🇷🇺",
         "lang_set_en": "Language set: English 🇬🇧",
     },
@@ -142,16 +140,15 @@ async def send_to_recipients(text: str):
 # ───────── handlers ─────────
 @dp.message(CommandStart())
 async def cmd_start(m: Message, state: FSMContext):
-    # предлагать язык при каждом новом /start
     await state.clear()
     await state.set_state(Lead.lang)
-    await m.answer(t("ru", "choose_lang"), reply_markup=None)
+    await m.answer(t("ru", "choose_lang"))
     await m.answer(t("en", "choose_lang"), reply_markup=lang_kb())
 
 @dp.message(Command("lang"))
 async def cmd_lang(m: Message, state: FSMContext):
     await state.set_state(Lead.lang)
-    await m.answer(t("ru", "choose_lang"), reply_markup=None)
+    await m.answer(t("ru", "choose_lang"))
     await m.answer(t("en", "choose_lang"), reply_markup=lang_kb())
 
 @dp.callback_query(Lead.lang, F.data.in_({"lang_ru", "lang_en"}))
@@ -164,7 +161,6 @@ async def set_lang(cb, state: FSMContext):
 
 @dp.message(Lead.lang)
 async def lang_fallback(m: Message, state: FSMContext):
-    # если пользователь написал текст вместо нажатия кнопки — по умолчанию RU
     await state.update_data(lang="ru")
     await state.set_state(Lead.name)
     await m.answer(t("ru", "hello"))
@@ -221,7 +217,6 @@ async def finalize(m: Message, state: FSMContext):
     await m.answer(t(lang, "lead_sent") + "\n\n" + t(lang, "start_again"))
     await state.clear()
 
-# Если пользователь пишет вне сценария — мягко перезапускаем
 @dp.message(F.text)
 async def fallback(m: Message, state: FSMContext):
     if await state.get_state() is None:
@@ -229,7 +224,6 @@ async def fallback(m: Message, state: FSMContext):
 
 # ───────── entrypoint ─────────
 async def main():
-    # Снимаем возможный веб-хук, чтобы polling не конфликтовал
     try:
         await bot.delete_webhook(drop_pending_updates=True)
         print("Webhook deleted (if existed).")
