@@ -1,10 +1,10 @@
 import os
 import asyncio
-from typing import Optional
+from typing import Optional, List, Dict
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
@@ -12,51 +12,112 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
     KeyboardButton,
     ReplyKeyboardRemove,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
 )
 from aiogram.client.default import DefaultBotProperties
 from dotenv import load_dotenv
 
-# ───────── env ─────────
+# ───────────── env ─────────────
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-# 📌 Фиксированный chat_id группы
-GROUP_CHAT_ID = -4716856992
+# Поддерживаем получателей: RECIPIENT_IDS="123,-1002222,456"
+# Оставлена совместимость с ADMIN_ID="123"
+def parse_ids(raw: str) -> List[int]:
+    ids: List[int] = []
+    for part in raw.split(","):
+        p = part.strip()
+        if not p:
+            continue
+        ids.append(int(p))
+    return ids
+
+recipients_raw = (os.getenv("RECIPIENT_IDS") or "").strip()
+admin_raw = (os.getenv("ADMIN_ID") or "").strip()
+RECIPIENT_IDS: List[int] = parse_ids(recipients_raw) if recipients_raw else (parse_ids(admin_raw) if admin_raw else [])
 
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN is not set")
+if not RECIPIENT_IDS:
+    print("WARNING: No recipients configured. Set RECIPIENT_IDS or ADMIN_ID in Railway Variables.")
 
-# ─────── aiogram ───────
+# ───────── aiogram base ─────────
 bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
-# ─────── FSM ───────
+# ─────────── i18n texts ─────────
+TEXTS: Dict[str, Dict[str, str]] = {
+    "ru": {
+        "choose_lang": "Выберите язык / Choose language",
+        "lang_ru": "Русский",
+        "lang_en": "English",
+        "hello": "Здравствуйте! Давайте оставим заявку.\n\n1) Напишите ваше <b>имя</b>.",
+        "ask_phone": "2) Оставьте <b>телефон</b>.\n\nМожно поделиться контактом кнопкой ниже или ввести вручную.",
+        "share_contact": "Поделиться контактом",
+        "type_phone": "Ввести номер вручную",
+        "phone_bad": "Не похоже на номер. Введите в международном формате, например +79991234567.",
+        "ask_note": "3) Добавьте сообщение (по желанию). Если не нужно — отправьте «-».",
+        "lead_sent": "Спасибо! Ваша заявка отправлена. Мы свяжемся с вами в ближайшее время.",
+        "lead_card_title": "<b>Новая заявка</b> 📝",
+        "name": "Имя",
+        "phone": "Телефон",
+        "message": "Сообщение",
+        "from": "От",
+        "start_again": "Начать заново: /start\nСменить язык: /lang",
+        "lang_set_ru": "Язык установлен: Русский 🇷🇺",
+        "lang_set_en": "Language set: English 🇬🇧",
+    },
+    "en": {
+        "choose_lang": "Выберите язык / Choose language",
+        "lang_ru": "Русский",
+        "lang_en": "English",
+        "hello": "Hello! Let’s leave a request.\n\n1) Please type your <b>name</b>.",
+        "ask_phone": "2) Please share your <b>phone</b>.\n\nYou can tap the button below or type it manually.",
+        "share_contact": "Share phone",
+        "type_phone": "Type phone manually",
+        "phone_bad": "This doesn’t look like a phone number. Use international format, e.g. +447911123456.",
+        "ask_note": "3) Add a message (optional). Send “-” to skip.",
+        "lead_sent": "Thanks! Your request has been sent. We will contact you shortly.",
+        "lead_card_title": "<b>New Lead</b> 📝",
+        "name": "Name",
+        "phone": "Phone",
+        "message": "Message",
+        "from": "From",
+        "start_again": "Start again: /start\nChange language: /lang",
+        "lang_set_ru": "Язык установлен: Русский 🇷🇺",
+        "lang_set_en": "Language set: English 🇬🇧",
+    },
+}
+
+def t(lang: str, key: str) -> str:
+    return TEXTS.get(lang, TEXTS["ru"]).get(key, key)
+
+# ─────────── FSM ───────────
 class Lead(StatesGroup):
+    lang = State()
     name = State()
-    contact_method = State()
     phone = State()
     note = State()
 
-def contact_kb() -> ReplyKeyboardMarkup:
+# ───────── keyboards ─────────
+def lang_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=TEXTS["ru"]["lang_ru"], callback_data="lang_ru"),
+        InlineKeyboardButton(text=TEXTS["en"]["lang_en"], callback_data="lang_en"),
+    ]])
+
+def contact_kb(lang: str) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📱 Поделиться контактом", request_contact=True)],
+            [KeyboardButton(text=t(lang, "share_contact"), request_contact=True)],
+            [KeyboardButton(text=t(lang, "type_phone"))],
         ],
         resize_keyboard=True,
         one_time_keyboard=True
     )
 
-def method_kb() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="📞 Звонок")],
-            [KeyboardButton(text="💬 Telegram")],
-            [KeyboardButton(text="🟢 WhatsApp")],
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=True
-    )
-
+# ───────── utils ─────────
 def normalize_phone(raw: str) -> Optional[str]:
     if not raw:
         return None
@@ -71,91 +132,110 @@ def normalize_phone(raw: str) -> Optional[str]:
         return None
     return digits
 
-# ─────── handlers ───────
+async def send_to_recipients(text: str):
+    for chat_id in RECIPIENT_IDS:
+        try:
+            await bot.send_message(chat_id, text)
+        except Exception as e:
+            print(f"Send to {chat_id} failed: {e}")
+
+# ───────── handlers ─────────
 @dp.message(CommandStart())
-async def start(message: Message, state: FSMContext):
+async def cmd_start(m: Message, state: FSMContext):
+    # предлагать язык при каждом новом /start
+    await state.clear()
+    await state.set_state(Lead.lang)
+    await m.answer(t("ru", "choose_lang"), reply_markup=None)
+    await m.answer(t("en", "choose_lang"), reply_markup=lang_kb())
+
+@dp.message(Command("lang"))
+async def cmd_lang(m: Message, state: FSMContext):
+    await state.set_state(Lead.lang)
+    await m.answer(t("ru", "choose_lang"), reply_markup=None)
+    await m.answer(t("en", "choose_lang"), reply_markup=lang_kb())
+
+@dp.callback_query(Lead.lang, F.data.in_({"lang_ru", "lang_en"}))
+async def set_lang(cb, state: FSMContext):
+    lang = "ru" if cb.data == "lang_ru" else "en"
+    await state.update_data(lang=lang)
     await state.set_state(Lead.name)
-    await message.answer(
-        "👋 Привет! На связи помощник команды <b>Nigma Interior</b>.\n\n"
-        "Чтобы мы связались с Вами, напишите, как Вас зовут?"
-    )
+    await cb.message.answer(t(lang, "hello"))
+    await cb.answer(t(lang, "lang_set_ru") if lang == "ru" else t(lang, "lang_set_en"))
+
+@dp.message(Lead.lang)
+async def lang_fallback(m: Message, state: FSMContext):
+    # если пользователь написал текст вместо нажатия кнопки — по умолчанию RU
+    await state.update_data(lang="ru")
+    await state.set_state(Lead.name)
+    await m.answer(t("ru", "hello"))
 
 @dp.message(Lead.name, F.text)
-async def got_name(message: Message, state: FSMContext):
-    await state.update_data(name=message.text.strip())
-    await state.set_state(Lead.contact_method)
-    await message.answer(
-        "📌 Уточните, как удобнее связаться?",
-        reply_markup=method_kb()
-    )
-
-@dp.message(Lead.contact_method, F.text)
-async def got_method(message: Message, state: FSMContext):
-    await state.update_data(contact_method=message.text.strip())
+async def got_name(m: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    await state.update_data(name=m.text.strip())
     await state.set_state(Lead.phone)
-    await message.answer(
-        "✍️ Напишите Ваш номер телефона или нажмите кнопку ниже «Поделиться контактом».",
-        reply_markup=contact_kb()
-    )
+    await m.answer(t(lang, "ask_phone"), reply_markup=contact_kb(lang))
 
 @dp.message(Lead.phone, F.contact)
-async def got_contact(message: Message, state: FSMContext):
-    phone = normalize_phone(message.contact.phone_number)
+async def got_contact(m: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    phone = normalize_phone(m.contact.phone_number)
     if not phone:
-        await message.answer("Не смог распознать номер. Введите его вручную в формате +7999…")
+        await m.answer(t(lang, "phone_bad"))
         return
     await state.update_data(phone=phone)
     await state.set_state(Lead.note)
-    await message.answer(
-        "📝 Если хотите, напишите подробности. А если нет — отправьте любой символ.",
-        reply_markup=ReplyKeyboardRemove()
-    )
+    await m.answer(t(lang, "ask_note"), reply_markup=ReplyKeyboardRemove())
 
 @dp.message(Lead.phone, F.text)
-async def got_phone_text(message: Message, state: FSMContext):
-    phone = normalize_phone(message.text.strip())
+async def got_phone_text(m: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    phone = normalize_phone(m.text.strip())
     if not phone:
-        await message.answer("Не похоже на номер. Введите в международном формате, например +79991234567.")
+        await m.answer(t(lang, "phone_bad"))
         return
     await state.update_data(phone=phone)
     await state.set_state(Lead.note)
-    await message.answer(
-        "📝 Если хотите, напишите подробности. А если нет — отправьте любой символ.",
-        reply_markup=ReplyKeyboardRemove()
-    )
+    await m.answer(t(lang, "ask_note"), reply_markup=ReplyKeyboardRemove())
 
 @dp.message(Lead.note, F.text)
-async def finalize(message: Message, state: FSMContext):
-    note = message.text.strip()
-    if not note or note in {"-", "—"}:
+async def finalize(m: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    note = m.text.strip()
+    if note in {"-", "—", "нет", "не нужно"}:
         note = "-"
 
-    data = await state.get_data()
-    await state.clear()
-
     lead_card = (
-        "<b>Новая заявка</b> 📝\n\n"
-        f"Имя: {data.get('name')}\n"
-        f"Способ связи: {data.get('contact_method')}\n"
-        f"Телефон: {data.get('phone')}\n"
-        f"Сообщение: {note}\n\n"
-        f"От: @{message.from_user.username or message.from_user.id}"
+        f"{t(lang, 'lead_card_title')}\n\n"
+        f"{t(lang, 'name')}: {data.get('name')}\n"
+        f"{t(lang, 'phone')}: {data.get('phone')}\n"
+        f"{t(lang, 'message')}: {note or '-'}\n\n"
+        f"{t(lang, 'from')}: @{m.from_user.username or m.from_user.id}"
     )
 
-    try:
-        await bot.send_message(GROUP_CHAT_ID, lead_card)
-    except Exception as e:
-        print("Не удалось отправить в группу:", e)
+    await send_to_recipients(lead_card)
+    await m.answer(t(lang, "lead_sent") + "\n\n" + t(lang, "start_again"))
+    await state.clear()
 
-    await message.answer("🤝 Приятно познакомиться! Скоро мы свяжемся с вами указанным Вами способом.")
-
+# Если пользователь пишет вне сценария — мягко перезапускаем
 @dp.message(F.text)
-async def fallback(message: Message, state: FSMContext):
+async def fallback(m: Message, state: FSMContext):
     if await state.get_state() is None:
-        await start(message, state)
+        await cmd_start(m, state)
 
-# ───── entrypoint ─────
+# ───────── entrypoint ─────────
 async def main():
+    # Снимаем возможный веб-хук, чтобы polling не конфликтовал
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+        print("Webhook deleted (if existed).")
+    except Exception as e:
+        print("delete_webhook error:", e)
+
     print("Bot started. Polling...")
     await dp.start_polling(bot)
 
